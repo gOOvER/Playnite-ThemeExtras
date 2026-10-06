@@ -1,4 +1,4 @@
-﻿using Playnite.SDK.Models;
+using Playnite.SDK.Models;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -16,21 +16,21 @@ namespace Extras.ViewModels
             PropertyInfo property = null; 
             if (getValue == null || setValue == null)
             {
-                typeof(Game).GetProperty(propertyName);
+                property = typeof(Game).GetProperty(propertyName);
             }
             if (getValue != null)
             {
                 SetGameProperty = setValue;
             } else
             {
-                SetGameProperty = (g, v) => property.SetValue(g, v);
+                SetGameProperty = (g, v) => property?.SetValue(g, v);
             }
             if (setValue != null)
             {
                 GetGameProperty = getValue;
             } else
             {
-                GetGameProperty = g => (T)property.GetValue(g);
+                GetGameProperty = g => property != null ? (T)property.GetValue(g) : default(T);
             }
             PropertyChanged += GamePropertyViewModel_PropertyChanged;
         }
@@ -69,13 +69,13 @@ namespace Extras.ViewModels
             {
                 if (!Equals(oldValue, newValue))
                 {
-                    var prevSelected = Playnite.SDK.API.Instance.MainView.SelectedGames.ToList();
+                    var prevSelected = Playnite.SDK.API.Instance.MainView?.SelectedGames?.ToList() ?? new List<Game>();
                     SetGameProperty(Game, newValue);
                     Playnite.SDK.API.Instance.Database.Games.Update(Game);
-                    var newSelected = Playnite.SDK.API.Instance.MainView.SelectedGames.ToList();
+                    var newSelected = Playnite.SDK.API.Instance.MainView?.SelectedGames?.ToList() ?? new List<Game>();
                     if (!Enumerable.SequenceEqual(prevSelected, newSelected))
                     {
-                        Playnite.SDK.API.Instance.MainView.SelectGames(prevSelected.Select(g => g.Id));
+                        Playnite.SDK.API.Instance.MainView?.SelectGames(prevSelected.Select(g => g.Id));
                     }
                 }
 

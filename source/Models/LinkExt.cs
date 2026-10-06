@@ -1,4 +1,4 @@
-﻿using Playnite.SDK;
+using Playnite.SDK;
 using Playnite.SDK.Data;
 using Playnite.SDK.Models;
 using PlayniteCommon.Web;
@@ -17,6 +17,7 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Documents;
+using System.Collections.Concurrent;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
@@ -25,8 +26,8 @@ namespace Extras.Models
 {
     public class LinkExt : Link
     {
-        private static Dictionary<string, object> iconCache = new Dictionary<string, object>();
-        private static Dictionary<string, string> fileIconCache = new Dictionary<string, string>();
+        private static readonly ConcurrentDictionary<string, object> iconCache = new ConcurrentDictionary<string, object>();
+        private static readonly ConcurrentDictionary<string, string> fileIconCache = new ConcurrentDictionary<string, string>();
 
         private const string WebsiteIconResourcePrefix = "ThemeExtrasWebIcon_";
 
@@ -39,7 +40,14 @@ namespace Extras.Models
         {
             try
             {
-                System.Diagnostics.Process.Start(Url); 
+                if (Uri.TryCreate(Url, UriKind.Absolute, out var uri))
+                {
+                    var scheme = uri.Scheme.ToLowerInvariant();
+                    if (scheme == "http" || scheme == "https" || scheme == "steam" || scheme == "goggalaxy" || scheme == "origin" || scheme == "ea" || scheme == "battlenet")
+                    {
+                        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(Url) { UseShellExecute = true }); 
+                    }
+                }
             }
             catch (Exception ex)
             {
@@ -59,6 +67,7 @@ namespace Extras.Models
             { "gog.com", new Uri(Path.Combine(assemblyDir, "Assets/Icons/gog.ico")) },
             { "humblebundle.com", new Uri(Path.Combine(assemblyDir, "Assets/Icons/humble.ico")) },
             { "origin.com", new Uri(Path.Combine(assemblyDir, "Assets/Icons/origin.ico")) },
+            { "ea.com", new Uri(Path.Combine(assemblyDir, "Assets/Icons/origin.ico")) },
         });
 
         public static readonly ReadOnlyDictionary<string, char> IconFontDict = new ReadOnlyDictionary<string, char>(new Dictionary<string, char>
@@ -141,7 +150,10 @@ namespace Extras.Models
                             .Where(f => f.Extension.Equals(".ico", StringComparison.OrdinalIgnoreCase)
                                      || f.Extension.Equals(".jpg", StringComparison.OrdinalIgnoreCase)
                                      || f.Extension.Equals(".png", StringComparison.OrdinalIgnoreCase));
-                        fileIconCache = imageFiles.ToDictionary(f => Path.GetFileNameWithoutExtension(f.Name), f => f.FullName);
+                        foreach (var f in imageFiles)
+                        {
+                            fileIconCache[Path.GetFileNameWithoutExtension(f.Name)] = f.FullName;
+                        }
                     }
                 }
             }
@@ -173,6 +185,37 @@ namespace Extras.Models
             }
         }
 
+        private static string NormalizeDomain(Uri uri)
+        {
+            if (uri == null) return string.Empty;
+            var scheme = uri.Scheme ?? "";
+            if (scheme.Equals("steam", StringComparison.OrdinalIgnoreCase))
+            {
+                return "steampowered.com";
+            }
+            if (scheme.Equals("goggalaxy", StringComparison.OrdinalIgnoreCase))
+            {
+                return "gog.com";
+            }
+            if (scheme.Equals("origin", StringComparison.OrdinalIgnoreCase) || scheme.Equals("origin2", StringComparison.OrdinalIgnoreCase))
+            {
+                return "origin.com";
+            }
+            if (scheme.Equals("ea", StringComparison.OrdinalIgnoreCase))
+            {
+                return "ea.com";
+            }
+            if (scheme.Equals("battlenet", StringComparison.OrdinalIgnoreCase))
+            {
+                return "battle.net";
+            }
+            if (scheme.Equals("com.epicgames.launcher", StringComparison.OrdinalIgnoreCase))
+            {
+                return "epicgames.com";
+            }
+            return uri.Host ?? "";
+        }
+
         public static object GetIcon(string Url)
         {
             if (!Uri.TryCreate(Url, UriKind.Absolute, out var uri))
@@ -180,7 +223,7 @@ namespace Extras.Models
                 return null;
             }
 
-            var domain = uri.Host ?? "";
+            var domain = NormalizeDomain(uri);
 
             object icon = null;
 
@@ -204,35 +247,48 @@ namespace Extras.Models
 
                 if (icon is null)
                 {
-                    var dirInfo = new DirectoryInfo(UserIconDir);
-                    if (dirInfo.Exists)
+                    var userDirs = new List<string> { UserIconDir };
+                    if (!string.IsNullOrEmpty(ThemeExtras.Instance?.LegacyUserLinkIconDir) && Directory.Exists(ThemeExtras.Instance.LegacyUserLinkIconDir))
                     {
-                        var files = dirInfo.EnumerateFiles("*", SearchOption.AllDirectories)
-                            .Where(f => f.Extension.Equals(".ico", StringComparison.OrdinalIgnoreCase) ||
-                                        f.Extension.Equals(".png", StringComparison.OrdinalIgnoreCase) ||
-                                        f.Extension.Equals(".jpg", StringComparison.OrdinalIgnoreCase));
-                        var userIconPath = files
-                            .FirstOrDefault(f => Path.GetFileNameWithoutExtension(f.Name).Equals(domain, StringComparison.OrdinalIgnoreCase));
+                        userDirs.Add(ThemeExtras.Instance.LegacyUserLinkIconDir);
+                    }
 
-                        if (userIconPath != null)
+                    foreach (var dir in userDirs)
+                    {
+                        var dirInfo = new DirectoryInfo(dir);
+                        if (dirInfo.Exists)
                         {
-                            try
+                            var files = dirInfo.EnumerateFiles("*", SearchOption.AllDirectories)
+                                .Where(f => f.Extension.Equals(".ico", StringComparison.OrdinalIgnoreCase) ||
+                                            f.Extension.Equals(".png", StringComparison.OrdinalIgnoreCase) ||
+                                            f.Extension.Equals(".jpg", StringComparison.OrdinalIgnoreCase));
+                            var userIconPath = files
+                                .FirstOrDefault(f => Path.GetFileNameWithoutExtension(f.Name).Equals(domain, StringComparison.OrdinalIgnoreCase));
+
+                            if (userIconPath != null)
                             {
-                                InvokeSafe(() =>
+                                try
                                 {
-                                    var bitmap = new BitmapImage();
-                                    bitmap.BeginInit();
-                                    bitmap.UriSource = new Uri(userIconPath.FullName);
-                                    bitmap.CreateOptions = BitmapCreateOptions.IgnoreColorProfile;
-                                    bitmap.CacheOption = BitmapCacheOption.OnLoad;
-                                    bitmap.EndInit();
-                                    icon = bitmap;
-                                });
-                            }
-                            catch (Exception ex)
-                            {
-                                icon = null;
-                                ThemeExtras.logger.Error(ex, $"Failed to load link icon \"{userIconPath}\" for domain \"{domain}\".");
+                                    InvokeSafe(() =>
+                                    {
+                                        var bitmap = new BitmapImage();
+                                        bitmap.BeginInit();
+                                        bitmap.UriSource = new Uri(userIconPath.FullName);
+                                        bitmap.CreateOptions = BitmapCreateOptions.IgnoreColorProfile;
+                                        bitmap.CacheOption = BitmapCacheOption.OnLoad;
+                                        bitmap.EndInit();
+                                        icon = bitmap;
+                                    });
+                                }
+                                catch (Exception ex)
+                                {
+                                    icon = null;
+                                    ThemeExtras.logger.Error(ex, $"Failed to load link icon \"{userIconPath}\" for domain \"{domain}\".");
+                                }
+                                if (icon != null)
+                                {
+                                    break;
+                                }
                             }
                         }
                     }
@@ -394,7 +450,7 @@ namespace Extras.Models
                         }
                     }
                 }
-                string faviconUrl = $@"http://www.google.com/s2/favicons?domain={uri.Host}&sz=32";
+                string faviconUrl = $@"https://www.google.com/s2/favicons?domain={uri.Host}&sz=32";
                 try
                 {
                     Uri faviconUri = new Uri(faviconUrl);
@@ -410,11 +466,15 @@ namespace Extras.Models
                             bitmap.CreateOptions = BitmapCreateOptions.IgnoreColorProfile;
                             bitmap.CacheOption = BitmapCacheOption.OnLoad;
                             bitmap.EndInit();
+                            bitmap.Freeze();
                             if (InitFileCache())
                             {
                                 stream.Position = 0;
                                 string iconPath = Path.Combine(fileCachePath, uri.Host + ".ico");
-                                stream.CopyTo(File.Create(iconPath));
+                                using (var fs = File.Create(iconPath))
+                                {
+                                    stream.CopyTo(fs);
+                                }
                             }
                             icon = bitmap;
                             iconCache[uri.Host] = icon;
@@ -449,7 +509,7 @@ namespace Extras.Models
                 return null;
             }
 
-            var domain = uri.Host ?? "";
+            var domain = NormalizeDomain(uri);
 
             object icon = null;
 
@@ -643,7 +703,7 @@ namespace Extras.Models
                         }
                     }
                 }
-                string faviconUrl = $@"http://www.google.com/s2/favicons?domain={uri.Host}&sz=32";
+                string faviconUrl = $@"https://www.google.com/s2/favicons?domain={uri.Host}&sz=32";
                 try
                 {
                     await semaphore.WaitAsync(cancellationToken);
@@ -661,15 +721,19 @@ namespace Extras.Models
                             bitmap.CreateOptions = BitmapCreateOptions.IgnoreColorProfile;
                             bitmap.CacheOption = BitmapCacheOption.OnLoad;
                             bitmap.EndInit();
+                            bitmap.Freeze();
                             if (InitFileCache())
                             {
                                 stream.Position = 0;
                                 string iconPath = Path.Combine(fileCachePath, uri.Host + ".ico");
-                                await stream.CopyToAsync(File.Create(iconPath), 81920, cancellationToken);
+                                using (var fs = File.Create(iconPath))
+                                {
+                                    await stream.CopyToAsync(fs, 81920, cancellationToken);
+                                }
                             }
                             icon = bitmap;
                             iconCache[uri.Host] = icon;
-                            return new Image() { Source = bitmap };
+                            return InvokeSafe(() => new Image() { Source = bitmap });
 
                         }
                     }

@@ -1,4 +1,4 @@
-﻿using Extras.Models;
+using Extras.Models;
 using Playnite.SDK.Controls;
 using Playnite.SDK.Models;
 using PlayniteCommon.Web;
@@ -26,76 +26,171 @@ namespace Extras.Controls
     /// </summary>
     public partial class Links : PluginUserControl
     {
-        private ObservableCollection<LinkExt> links = new ObservableCollection<LinkExt>();
+        private readonly ObservableCollection<LinkExt> links = new ObservableCollection<LinkExt>();
+        private Game subscribedGame = null;
 
         public Links()
         {
             InitializeComponent();
             LinksItemsControl.ItemsSource = links;
+            Unloaded += Links_Unloaded;
+        }
+
+        private void Links_Unloaded(object sender, RoutedEventArgs e)
+        {
+            DetachGame(subscribedGame);
+            subscribedGame = null;
+        }
+
+        private void DetachGame(Game game)
+        {
+            if (game != null)
+            {
+                game.PropertyChanged -= Game_PropertyChanged;
+                if (game.Links is ObservableCollection<Link> oldLinks)
+                {
+                    oldLinks.CollectionChanged -= Links_CollectionChanged;
+                }
+            }
         }
 
         public override async void GameContextChanged(Game oldContext, Game newContext)
         {
-            if (oldContext is Game)
-            {
-                oldContext.PropertyChanged -= Game_PropertyChanged;
-                if (oldContext.Links is ObservableCollection<Link>)
-                {
-                    oldContext.Links.CollectionChanged -= Links_CollectionChanged;
-                }
-            }
-            if (newContext is Game game)
-            {
-                game.PropertyChanged += Game_PropertyChanged;
-                if (game.Links is ObservableCollection<Link>)
-                {
-                    game.Links.CollectionChanged += Links_CollectionChanged;
-                }
-                await UpdateLinks(game);
-            }
-        }
-
-        private async Task UpdateLinks(Game game)
-        {
             try
             {
-                links.Clear();
-                var httpClient = HttpClientFactory.GetClient();
+                DetachGame(oldContext);
+                subscribedGame = newContext;
 
-                if (game.Links is ObservableCollection<Link>)
+                if (newContext is Game game)
                 {
-                    foreach (var l in game.Links)
+                    game.PropertyChanged += Game_PropertyChanged;
+                    if (game.Links is ObservableCollection<Link> newLinks)
                     {
-                        LinkExt link = new LinkExt(l);
-                        links.Add(link);
+                        newLinks.CollectionChanged -= Links_CollectionChanged;
+                        newLinks.CollectionChanged += Links_CollectionChanged;
                     }
-                    foreach (var l in links)
+                    await UpdateLinksAsync(game);
+                }
+                else
+                {
+                    if (Dispatcher.CheckAccess())
                     {
-                        l.Icon = await LinkExt.GetIconAsync(l.Url);
+                        links.Clear();
+                    }
+                    else
+                    {
+                        await Dispatcher.InvokeAsync(() => links.Clear());
                     }
                 }
             }
             catch (Exception ex)
             {
-                ThemeExtras.logger.Debug(ex, $"Failed to update link icons for game {game?.Name}");
+                ThemeExtras.logger.Error(ex, "Error in Links.GameContextChanged");
+            }
+        }
+
+        private async Task UpdateLinksAsync(Game game)
+        {
+            if (game == null)
+            {
+                if (Dispatcher.CheckAccess())
+                {
+                    links.Clear();
+                }
+                else
+                {
+                    await Dispatcher.InvokeAsync(() => links.Clear());
+                }
+                return;
+            }
+
+            try
+            {
+                List<LinkExt> newItems = new List<LinkExt>();
+                if (game.Links is ObservableCollection<Link> gameLinks)
+                {
+                    foreach (var l in gameLinks)
+                    {
+                        newItems.Add(new LinkExt(l));
+                    }
+                }
+
+                if (Dispatcher.CheckAccess())
+                {
+                    links.Clear();
+                    foreach (var item in newItems)
+                    {
+                        links.Add(item);
+                    }
+                }
+                else
+                {
+                    await Dispatcher.InvokeAsync(() =>
+                    {
+                        links.Clear();
+                        foreach (var item in newItems)
+                        {
+                            links.Add(item);
+                        }
+                    });
+                }
+
+                foreach (var l in newItems)
+                {
+                    var icon = await LinkExt.GetIconAsync(l.Url);
+                    if (Dispatcher.CheckAccess())
+                    {
+                        l.Icon = icon;
+                    }
+                    else
+                    {
+                        await Dispatcher.InvokeAsync(() => l.Icon = icon);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                ThemeExtras.logger.Debug(ex, $"Failed to update link icons for game {game.Name}");
             }
         }
 
         private async void Links_CollectionChanged(object sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
         {
-            await UpdateLinks(GameContext);
+            try
+            {
+                var game = subscribedGame;
+                if (game != null)
+                {
+                    await UpdateLinksAsync(game);
+                }
+            }
+            catch (Exception ex)
+            {
+                ThemeExtras.logger.Error(ex, "Error in Links_CollectionChanged");
+            }
         }
 
         private async void Game_PropertyChanged(object sender, System.ComponentModel.PropertyChangedEventArgs e)
         {
-            if (e.PropertyName is nameof(Game.Links))
+            try
             {
-                if (GameContext.Links is ObservableCollection<Link>)
+                if (e.PropertyName == nameof(Game.Links))
                 {
-                    GameContext.Links.CollectionChanged -= Links_CollectionChanged;
-                    GameContext.Links.CollectionChanged += Links_CollectionChanged;
+                    var game = sender as Game ?? subscribedGame;
+                    if (game != null)
+                    {
+                        if (game.Links is ObservableCollection<Link> gameLinks)
+                        {
+                            gameLinks.CollectionChanged -= Links_CollectionChanged;
+                            gameLinks.CollectionChanged += Links_CollectionChanged;
+                        }
+                        await UpdateLinksAsync(game);
+                    }
                 }
-                await UpdateLinks(GameContext);
+            }
+            catch (Exception ex)
+            {
+                ThemeExtras.logger.Error(ex, "Error in Game_PropertyChanged for Links");
             }
         }
     }

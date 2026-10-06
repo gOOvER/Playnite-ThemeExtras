@@ -1,4 +1,4 @@
-﻿using Playnite.SDK.Controls;
+using Playnite.SDK.Controls;
 using Playnite.SDK.Models;
 using System;
 using System.Collections.Generic;
@@ -93,13 +93,15 @@ namespace Extras.Controls
             {
                 case nameof(Game.PlatformIds):
                 case nameof(Game.PluginId):
+                case nameof(Game.SourceId):
+                    var targetGame = sender as Game ?? Tag as Game ?? GameContext;
                     if (Dispatcher.CheckAccess())
                     {
-                        BannerImage.Source = bannerCache.GetBanner(GameContext);
+                        BannerImage.Source = targetGame != null ? bannerCache.GetBanner(targetGame) : null;
                     } else 
                     {
                         Dispatcher.BeginInvoke(new Action(() => {
-                            BannerImage.Source = bannerCache.GetBanner(GameContext);
+                            BannerImage.Source = targetGame != null ? bannerCache.GetBanner(targetGame) : null;
                         }));
                     }
                     break;

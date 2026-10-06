@@ -1,4 +1,4 @@
-﻿using Playnite.SDK;
+using Playnite.SDK;
 using Playnite.SDK.Data;
 using Playnite.SDK.Models;
 using Playnite.SDK.Plugins;
@@ -119,7 +119,23 @@ namespace Extras
             }
             else
             {
-                Settings = new ExtrasSettings();
+                // Fallback: migrate legacy settings if present
+                try
+                {
+                    var legacyPath = Path.Combine(plugin.GetPluginUserDataPath(), "..", "felixkmh_Extras_Plugin", "config.json");
+                    if (File.Exists(legacyPath))
+                    {
+                        var json = File.ReadAllText(legacyPath);
+                        savedSettings = Serialization.FromJson<ExtrasSettings>(json);
+                        ThemeExtras.logger.Info("Successfully migrated settings from legacy ThemeExtras config.");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    ThemeExtras.logger.Debug(ex, "Failed to load legacy ThemeExtras settings.");
+                }
+
+                Settings = savedSettings ?? new ExtrasSettings();
             }
         }
 

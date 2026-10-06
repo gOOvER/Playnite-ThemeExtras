@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Windows;
 using System.Windows.Data;
 using System.Windows.Media.Animation;
@@ -79,6 +79,11 @@ namespace Extras.ViewModels.Objects
 
         private void Element_Unloaded(object sender, RoutedEventArgs e)
         {
+            if (sender is FrameworkElement el)
+            {
+                el.IsVisibleChanged -= Element_IsVisibleChanged;
+                el.Unloaded -= Element_Unloaded;
+            }
             BeginAnimation(CurrentValueProperty, null);
         }
     }

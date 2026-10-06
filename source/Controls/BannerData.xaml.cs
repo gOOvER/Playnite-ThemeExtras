@@ -1,4 +1,4 @@
-﻿using Playnite.SDK.Controls;
+using Playnite.SDK.Controls;
 using Playnite.SDK.Models;
 using System;
 using System.Collections.Generic;
@@ -111,18 +111,32 @@ namespace Extras.Controls
             {
                 if (newContext?.PluginId != oldContext?.PluginId || newContext.SourceId != oldContext.SourceId || !newContext.PlatformIds.IsListEqual(oldContext.PlatformIds))
                 {
-                    var bitmapImage = bannerCache.GetBanner(newContext);
-                    if (bitmapImage != BannerSource)
-                    {
-                        BannerSource = bitmapImage;
-                        Ratio = bitmapImage.Height / bitmapImage.Width;
-                    }
+                    UpdateBannerFromGame(newContext);
                 }
                 newContext.PropertyChanged += Game_PropertyChanged;
             }
             else
             {
                 BannerSource = null;
+                Ratio = 0.0;
+            }
+        }
+
+        private void UpdateBannerFromGame(Game game)
+        {
+            if (game != null)
+            {
+                var bitmapImage = bannerCache.GetBanner(game);
+                if (bitmapImage != BannerSource)
+                {
+                    BannerSource = bitmapImage;
+                    Ratio = bitmapImage != null && bitmapImage.Width > 0 ? bitmapImage.Height / bitmapImage.Width : 0.0;
+                }
+            }
+            else
+            {
+                BannerSource = null;
+                Ratio = 0.0;
             }
         }
 
@@ -132,15 +146,17 @@ namespace Extras.Controls
             {
                 case nameof(Game.PlatformIds):
                 case nameof(Game.PluginId):
+                case nameof(Game.SourceId):
+                    var targetGame = sender as Game ?? Tag as Game ?? GameContext;
                     if (Dispatcher.CheckAccess())
                     {
-                        BannerSource = bannerCache.GetBanner(GameContext);
+                        UpdateBannerFromGame(targetGame);
                     }
                     else
                     {
                         Dispatcher.BeginInvoke(new Action(() =>
                         {
-                            BannerSource = bannerCache.GetBanner(GameContext);
+                            UpdateBannerFromGame(targetGame);
                         }));
                     }
                     break;

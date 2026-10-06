@@ -1,4 +1,4 @@
-﻿using Extras.Models.NamedItems;
+using Extras.Models.NamedItems;
 using Extras.ViewModels.Objects;
 using Playnite.SDK;
 using Playnite.SDK.Controls;
@@ -70,24 +70,26 @@ namespace Extras.Controls
             Collection = new ObservableCollection<Tag>(Playnite.SDK.API.Instance.Database.Tags);
             AcceptCommand = new RelayCommand<EditableItemsControl.MatchData>(match =>
             {
+                if (GameContext == null) return;
                 if (match?.Matches?.OfType<Tag>().FirstOrDefault() is Tag tag)
                 {
-                    GameContext.TagIds = GameContext.TagIds.Concat(new[] { tag.Id }).Distinct().ToList();
+                    GameContext.TagIds = (GameContext.TagIds ?? Enumerable.Empty<Guid>()).Concat(new[] { tag.Id }).Distinct().ToList();
                     Playnite.SDK.API.Instance.Database.Games.Update(GameContext);
                 } else if (!string.IsNullOrWhiteSpace(match.Filter))
                 {
                     var newTag = API.Instance.Database.Tags.Add(match.Filter);
                     _volatileTags.Add(newTag);
-                    GameContext.TagIds = GameContext.TagIds.Concat(new[] { newTag.Id }).Distinct().ToList();
+                    GameContext.TagIds = (GameContext.TagIds ?? Enumerable.Empty<Guid>()).Concat(new[] { newTag.Id }).Distinct().ToList();
                     Playnite.SDK.API.Instance.Database.Games.Update(GameContext);
                 }
             });
 
             RemoveCommand = new RelayCommand<DatabaseObject>(o =>
             {
+                if (GameContext == null) return;
                 if (o is Tag tag)
                 {
-                    GameContext.TagIds = GameContext.TagIds.Where(t => t != o.Id).ToList();
+                    GameContext.TagIds = (GameContext.TagIds ?? Enumerable.Empty<Guid>()).Where(t => t != o.Id).ToList();
                     Playnite.SDK.API.Instance.Database.Games.Update(GameContext);
                 }
             });

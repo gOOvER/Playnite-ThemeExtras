@@ -1,7 +1,16 @@
-﻿Id: felixkmh_Extras_Plugin
-Name: ThemeExtras
-Author: felixkmh
-Version: 1.4.4
+Id: goover_ThemeExtrasNG_Plugin
+Name: ThemeExtrasNG
+Author: gOOvER
+Version: 1.0.0
 Module: Extras.dll
 Type: GenericPlugin
 Icon: icon.png
+Links:
+  - Name: Website
+    Url: https://playnite.goover.dev
+  - Name: GitHub
+    Url: https://github.com/gOOvER/Playnite-ThemeExtras
+  - Name: Ko-fi
+    Url: https://ko-fi.com/goover
+  - Name: Original Add-on (felixkmh)
+    Url: https://github.com/felixkmh/ThemeExtras-for-Playnite

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
@@ -35,23 +35,35 @@ namespace Extras.Converters
                     intValue = parsedInt;
                 }
             }
+            Color? resultColor = null;
             if (intValue is int actualInt)
             {
                 if (actualInt >= 0 && actualInt < 33)
                 {
                     var t = 1f * actualInt / 33;
-                    return Lerp(Colors.OrangeRed, Colors.LightYellow, t);
+                    resultColor = Lerp(Colors.OrangeRed, Colors.LightYellow, t);
                 }
-                if (actualInt >= 33 && actualInt < 66)
+                else if (actualInt >= 33 && actualInt < 66)
                 {
                     var t = 1f * (actualInt - 33) / 33;
-                    return Lerp(Colors.LightYellow, Colors.YellowGreen, t);
+                    resultColor = Lerp(Colors.LightYellow, Colors.YellowGreen, t);
                 }
-                if (actualInt >= 66 && actualInt <= 100)
+                else if (actualInt >= 66 && actualInt <= 100)
                 {
                     var t = 1f * (actualInt - 66) / 34;
-                    return Lerp(Colors.YellowGreen, Colors.LawnGreen, t);
+                    resultColor = Lerp(Colors.YellowGreen, Colors.LawnGreen, t);
                 }
+            }
+
+            if (resultColor.HasValue)
+            {
+                if (targetType == typeof(Color))
+                {
+                    return resultColor.Value;
+                }
+                var brush = new SolidColorBrush(resultColor.Value);
+                brush.Freeze();
+                return brush;
             }
 
             return DependencyProperty.UnsetValue;

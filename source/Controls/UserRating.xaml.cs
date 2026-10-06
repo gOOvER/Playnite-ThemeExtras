@@ -1,4 +1,4 @@
-﻿using Playnite.SDK.Models;
+using Playnite.SDK.Models;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -40,7 +40,10 @@ namespace Extras.Controls
                 {
                     isDragging = false;
                     mouseDown = false;
-                    Playnite.SDK.API.Instance.Database.Games.Update(GameContext);
+                    if (GameContext is Game game)
+                    {
+                        Playnite.SDK.API.Instance.Database?.Games?.Update(game);
+                    }
                 }
             }
         }
@@ -65,8 +68,17 @@ namespace Extras.Controls
 
         private static void SetUserScore(MouseEventArgs e, bool round, Game game, ProgressBar progressBar)
         {
+            var width = progressBar.ActualWidth;
+            if (width <= 0)
+            {
+                return;
+            }
             var pos = e.GetPosition(progressBar);
-            var score = pos.X / progressBar.ActualWidth * 100;
+            var score = pos.X / width * 100;
+            if (double.IsNaN(score) || double.IsInfinity(score))
+            {
+                return;
+            }
             if (round)
             {
                 score = Math.Ceiling(score / 10) * 10;
@@ -87,7 +99,7 @@ namespace Extras.Controls
                 if(progressBar.IsMouseCaptured)
                 {
                     progressBar.ReleaseMouseCapture();
-                    Playnite.SDK.API.Instance.Database.Games.Update(GameContext);
+                    Playnite.SDK.API.Instance.Database?.Games?.Update(game);
                 }
             }
         }

@@ -1,4 +1,4 @@
-﻿using Playnite.SDK.Models;
+using Playnite.SDK.Models;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -131,6 +131,7 @@ namespace Extras
                 bitmapImage.CacheOption = BitmapCacheOption.OnLoad;
                 bitmapImage.DecodePixelHeight = Math.Min(1000, Math.Max(0, ExtendedTheme.Current?.DecodeHeight ?? 50));
                 bitmapImage.EndInit();
+                bitmapImage.Freeze();
                 return bitmapImage;
             }
             catch (Exception)
@@ -149,6 +150,7 @@ namespace Extras
                 bitmapImage.CacheOption = BitmapCacheOption.OnLoad;
                 //bitmapImage.DecodePixelHeight = Math.Min(1000, Math.Max(0, ExtendedTheme.Current?.DecodeHeight ?? 50));
                 bitmapImage.EndInit();
+                bitmapImage.Freeze();
                 return bitmapImage;
             }
             catch (Exception)

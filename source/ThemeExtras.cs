@@ -1,4 +1,4 @@
-﻿using Extras.Abstractions.Navigation;
+using Extras.Abstractions.Navigation;
 using Extras.Models;
 using Playnite.SDK;
 using Playnite.SDK.Data;
@@ -35,6 +35,7 @@ namespace Extras
         internal static ThemeExtras Instance { get; private set; }
 
         internal const string ExtensionName = "ThemeExtras";
+        internal const string ExtensionNameNG = "ThemeExtrasNG";
         internal const string UserRatingElement = "UserRating";
         internal const string CommunityRatingElement = "CommunityRating";
         internal const string CriticRatingElement = "CriticRating";
@@ -54,6 +55,8 @@ namespace Extras
         internal const string BannersDirectoryName = "Banners";
 
         public string UserLinkIconDir => Path.Combine(GetPluginUserDataPath(), "LinkIcons");
+        public string LegacyPluginUserDataPath => Path.Combine(GetPluginUserDataPath(), "..", "felixkmh_Extras_Plugin");
+        public string LegacyUserLinkIconDir => Path.Combine(LegacyPluginUserDataPath, "LinkIcons");
 
         public string DefaultBannerOverride => Path.Combine(GetPluginUserDataPath(), BannersDirectoryName, "Default.png");
         public string BannersBySourceNameOverride => Path.Combine(GetPluginUserDataPath(), BannersDirectoryName, "BySourceName");
@@ -85,39 +88,59 @@ namespace Extras
                 HasSettings = true
             };
 
+            var elements = new List<string>
+            {
+                SettableCompletionStatus,
+                SettableFavorite,
+                SettableHidden,
+                SettableUserScore,
+                UserRatingElement,
+                CommunityRatingElement,
+                CriticRatingElement,
+                CompletionStatusComboBox,
+                BannerElement,
+                BannerData,
+                LinksElement,
+                EditableTags,
+            }.SelectMany(e => Enumerable.Range(0, 3).Select(i => e + (i == 0 ? "" : i.ToString()))).ToList();
+
+            // Register support for both legacy ThemeExtras and ThemeExtrasNG for backwards compatibility
             AddCustomElementSupport(new AddCustomElementSupportArgs
             {
                 SourceName = ExtensionName,
-                ElementList = new List<string>
-                {
-                    SettableCompletionStatus,
-                    SettableFavorite,
-                    SettableHidden,
-                    SettableUserScore,
-                    UserRatingElement,
-                    CommunityRatingElement,
-                    CriticRatingElement,
-                    CompletionStatusComboBox,
-                    BannerElement,
-                    BannerData,
-                    LinksElement,
-                    EditableTags,
-                }.SelectMany(e => Enumerable.Range(0, 3).Select(i => e + (i == 0 ? "" : i.ToString()))).ToList()
+                ElementList = elements
             });
+
+            AddCustomElementSupport(new AddCustomElementSupportArgs
+            {
+                SourceName = ExtensionNameNG,
+                ElementList = elements
+            });
+
             AddSettingsSupport(new AddSettingsSupportArgs { SourceName = ExtensionName, SettingsRoot = "settingsViewModel.Settings" });
+            AddSettingsSupport(new AddSettingsSupportArgs { SourceName = ExtensionNameNG, SettingsRoot = "settingsViewModel.Settings" });
+
+            var converters = new List<IValueConverter> {
+                new Converters.PowConverter(),
+                new Converters.UrlToAsyncIconConverter(),
+                new Converters.MultiplicativeInverseConverter(),
+                new Converters.DivideConverter(),
+                new Converters.MultiplyConverter(),
+                new Converters.DoubleToSmoothedValueConverter(),
+                new Converters.DoubleToCornerRadiusConverter(),
+                new Converters.IntToRatingBrushConverter(),
+            };
 
             AddConvertersSupport(new AddConvertersSupportArgs
             {
                 SourceName = ExtensionName,
-                Converters = new List<IValueConverter> {
-                    new Converters.PowConverter(),
-                    new Converters.UrlToAsyncIconConverter(),
-                    new Converters.MultiplicativeInverseConverter(),
-                    new Converters.DivideConverter(),
-                    new Converters.MultiplyConverter(),
-                    new Converters.DoubleToSmoothedValueConverter(),
-                    new Converters.DoubleToCornerRadiusConverter(),
-                }
+                Converters = converters
+            });
+
+            AddConvertersSupport(new AddConvertersSupportArgs
+            {
+                SourceName = ExtensionNameNG,
+                Converters = converters
             });
 
             AddPropertiesAsResources<ICommand>(Settings.Commands);
@@ -149,7 +172,21 @@ namespace Extras
                 BannersBySourceNamePath = BannersBySourceNameOverride
             };
 
-            BannerCache = new BannerCache(extendedThemes.Where(t => t.IsCurrentTheme).OfType<IBannerProvider>().Concat(new[] { directoryBannerProvider }).ToArray());
+            var bannerProviders = extendedThemes.Where(t => t.IsCurrentTheme).OfType<IBannerProvider>().Concat(new[] { directoryBannerProvider }).ToList();
+            if (Directory.Exists(LegacyPluginUserDataPath))
+            {
+                var legacyBannerProvider = new DirectoryBannerProvider()
+                {
+                    DefaultBanner = Path.Combine(LegacyPluginUserDataPath, BannersDirectoryName, "Default.png"),
+                    BannersByPlatformNamePath = Path.Combine(LegacyPluginUserDataPath, BannersDirectoryName, "ByPlatformName"),
+                    BannersByPluginIdPath = Path.Combine(LegacyPluginUserDataPath, BannersDirectoryName, "ByPluginId"),
+                    BannersBySpecIdPath = Path.Combine(LegacyPluginUserDataPath, BannersDirectoryName, "ByPlatformSpecId"),
+                    BannersBySourceNamePath = Path.Combine(LegacyPluginUserDataPath, BannersDirectoryName, "BySourceName")
+                };
+                bannerProviders.Add(legacyBannerProvider);
+            }
+
+            BannerCache = new BannerCache(bannerProviders.ToArray());
         }
 
         private void Settings_PropertyChanged(object sender, System.ComponentModel.PropertyChangedEventArgs e)
@@ -368,14 +405,14 @@ namespace Extras
         {
             try
             {
-                Shell32.Shell shell = new Shell32.Shell();
-                Shell32.Folder folder = shell.NameSpace(Path.GetDirectoryName(shortcutPath));
-                Shell32.FolderItem folderItem = folder.Items().Item(Path.GetFileName(shortcutPath));
-                Shell32.ShellLinkObject currentLink = (Shell32.ShellLinkObject)folderItem.GetLink;
-
-                currentLink.SetIconLocation(iconPath, 0);
-
-                currentLink.Save();
+                var shellType = Type.GetTypeFromProgID("WScript.Shell");
+                if (shellType != null)
+                {
+                    dynamic shell = Activator.CreateInstance(shellType);
+                    var shortcut = shell.CreateShortcut(shortcutPath);
+                    shortcut.IconLocation = $"{iconPath},0";
+                    shortcut.Save();
+                }
             }
             catch (Exception ex)
             {
@@ -441,9 +478,7 @@ namespace Extras
 
         public override IEnumerable<GameMenuItem> GetGameMenuItems(GetGameMenuItemsArgs args)
         {
-            Game selectedGame = args.Games.First();
-
-            if (Settings.EnableGameMenuRating)
+            if (Settings.EnableGameMenuRating && args?.Games != null && args.Games.Any())
             {
                 yield return new GameMenuItem
                 {
@@ -452,13 +487,12 @@ namespace Extras
 
                     Action = (mainMenuItem) =>
                     {
-                        var games = args.Games.Distinct();
-
+                        var games = args.Games.Distinct().ToList();
                         foreach (Game game in games)
                         {
                             game.UserScore = 20;
-                            Playnite.SDK.API.Instance.Database.Games.Update(game);
                         }
+                        Playnite.SDK.API.Instance.Database.Games.Update(games);
                     }
                 };
 
@@ -469,13 +503,12 @@ namespace Extras
 
                     Action = (mainMenuItem) =>
                     {
-                        var games = args.Games.Distinct();
-
+                        var games = args.Games.Distinct().ToList();
                         foreach (Game game in games)
                         {
                             game.UserScore = 40;
-                            Playnite.SDK.API.Instance.Database.Games.Update(game);
                         }
+                        Playnite.SDK.API.Instance.Database.Games.Update(games);
                     }
                 };
 
@@ -486,13 +519,12 @@ namespace Extras
 
                     Action = (mainMenuItem) =>
                     {
-                        var games = args.Games.Distinct();
-
+                        var games = args.Games.Distinct().ToList();
                         foreach (Game game in games)
                         {
                             game.UserScore = 60;
-                            Playnite.SDK.API.Instance.Database.Games.Update(game);
                         }
+                        Playnite.SDK.API.Instance.Database.Games.Update(games);
                     }
                 };
 
@@ -503,13 +535,12 @@ namespace Extras
 
                     Action = (mainMenuItem) =>
                     {
-                        var games = args.Games.Distinct();
-
+                        var games = args.Games.Distinct().ToList();
                         foreach (Game game in games)
                         {
                             game.UserScore = 80;
-                            Playnite.SDK.API.Instance.Database.Games.Update(game);
                         }
+                        Playnite.SDK.API.Instance.Database.Games.Update(games);
                     }
                 };
 
@@ -520,13 +551,12 @@ namespace Extras
 
                     Action = (mainMenuItem) =>
                     {
-                        var games = args.Games.Distinct();
-
+                        var games = args.Games.Distinct().ToList();
                         foreach (Game game in games)
                         {
                             game.UserScore = 100;
-                            Playnite.SDK.API.Instance.Database.Games.Update(game);
                         }
+                        Playnite.SDK.API.Instance.Database.Games.Update(games);
                     }
                 };
             }
@@ -556,7 +586,7 @@ namespace Extras
                     ApplyCurrentThemeIcons();
                     PlayniteApi.Dialogs.ShowMessage("Theme icon was applied to shortcuts. To update the icon in the taskbar, Playnite needs to be restarted. If Playnite is pinned to the taskbar, it needs to be unpinned and then pinned again, in order for the icon to update.");
                 },
-                MenuSection = "@ThemeExtras"
+                MenuSection = "@ThemeExtrasNG"
             };
 
             yield return new MainMenuItem()
@@ -567,7 +597,7 @@ namespace Extras
                     RestoreDefaultThemeIcons();
                     PlayniteApi.Dialogs.ShowMessage("Shortcut icons were restored. To update the icon in the taskbar, Playnite needs to be restarted. If Playnite is pinned to the taskbar, it needs to be unpinned and then pinned again, in order for the icon to update.");
                 },
-                MenuSection = "@ThemeExtras"
+                MenuSection = "@ThemeExtrasNG"
             };
         }
 
@@ -753,6 +783,15 @@ namespace Extras
                 Application.Current.Resources.Add("Extras_CompletionTextColor", new SolidColorBrush(Colors.White) { Opacity = 1 });
             }
             string name = args.Name;
+            if (name.StartsWith("ThemeExtrasNG_"))
+            {
+                name = name.Substring("ThemeExtrasNG_".Length);
+            }
+            else if (name.StartsWith("ThemeExtras_"))
+            {
+                name = name.Substring("ThemeExtras_".Length);
+            }
+
             if (name.EndsWith("1") || name.EndsWith("2"))
             {
                 name = name.Substring(0, name.Length - 1);
